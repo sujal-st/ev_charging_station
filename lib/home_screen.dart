@@ -5,12 +5,14 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'add_charging_station_screen.dart';
 import 'charging_station_details_screen.dart';
 import 'bookingscreen.dart'; // Make sure this import is at the top
 import 'create_booking_screen.dart';
 import 'profile_screen.dart';
 import 'favorites_screen.dart';
+import 'trip_planner_screen.dart';
 import 'services/charging_station_service.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
@@ -134,11 +136,25 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       // Always fetch from Firestore (source of truth)
       final remote = await _stationService.fetchAllStations();
+      final center = _currentPosition != null
+          ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+          : _kathmandu;
+      final osmStations = await _fetchOsmStations(center: center, radiusKm: 50);
+
+      final normalizedApproved = remote
+          .map((s) => {
+                ...s,
+                'source': 'approved',
+                'isBookable': true,
+              })
+          .toList();
+
+      final mergedStations = _mergeStations(normalizedApproved, osmStations);
       
       setState(() {
         _stations.clear();
-        if (remote.isNotEmpty) {
-          _stations.addAll(remote);
+        if (mergedStations.isNotEmpty) {
+          _stations.addAll(mergedStations);
         }
         _isLoading = false;
         _applyFilters();
@@ -163,6 +179,102 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchOsmStations({
+    required LatLng center,
+    required double radiusKm,
+  }) async {
+    final uri = Uri.parse('https://overpass-api.de/api/interpreter');
+    final radiusMetres = (radiusKm * 1000).round();
+    final query = '''
+[out:json][timeout:25];
+(
+  node["amenity"="charging_station"](around:$radiusMetres,${center.latitude},${center.longitude});
+  way["amenity"="charging_station"](around:$radiusMetres,${center.latitude},${center.longitude});
+);
+out center;
+''';
+
+    try {
+      final resp = await http.post(uri, body: {'data': query});
+      if (resp.statusCode != 200) return [];
+
+      final data = json.decode(resp.body) as Map<String, dynamic>;
+      final elements = (data['elements'] as List?) ?? const [];
+
+      final List<Map<String, dynamic>> result = [];
+      for (final raw in elements) {
+        final el = raw as Map<String, dynamic>;
+        final lat = _toDouble(el['lat'] ?? el['center']?['lat']);
+        final lng = _toDouble(el['lon'] ?? el['center']?['lon']);
+        if (lat == null || lng == null) continue;
+
+        final tags = (el['tags'] as Map?) ?? {};
+        final name = (tags['name'] ?? tags['operator'] ?? 'OSM EV Station').toString();
+        final address = _buildOsmAddress(tags);
+
+        result.add({
+          'id': 'osm_${el['type']}_${el['id']}',
+          'name': name,
+          'address': address,
+          'lat': lat,
+          'lng': lng,
+          'latitude': lat,
+          'longitude': lng,
+          'available': true,
+          'status': 'active',
+          'source': 'osm',
+          'isBookable': false,
+        });
+      }
+      return result;
+    } catch (e) {
+      print('Error loading OSM stations: $e');
+      return [];
+    }
+  }
+
+  List<Map<String, dynamic>> _mergeStations(
+    List<Map<String, dynamic>> approved,
+    List<Map<String, dynamic>> osm,
+  ) {
+    final Map<String, Map<String, dynamic>> merged = {};
+
+    for (final st in approved) {
+      final lat = _toDouble(st['lat'] ?? st['latitude']);
+      final lng = _toDouble(st['lng'] ?? st['longitude']);
+      if (lat == null || lng == null) continue;
+      final key = '${lat.toStringAsFixed(5)}_${lng.toStringAsFixed(5)}';
+      merged[key] = st;
+    }
+
+    for (final st in osm) {
+      final lat = _toDouble(st['lat'] ?? st['latitude']);
+      final lng = _toDouble(st['lng'] ?? st['longitude']);
+      if (lat == null || lng == null) continue;
+      final key = '${lat.toStringAsFixed(5)}_${lng.toStringAsFixed(5)}';
+      // Keep approved station when both sources overlap at same point.
+      merged.putIfAbsent(key, () => st);
+    }
+
+    return merged.values.toList();
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  String _buildOsmAddress(Map tags) {
+    final parts = <String>[
+      (tags['addr:street'] ?? '').toString(),
+      (tags['addr:city'] ?? '').toString(),
+    ].where((v) => v.isNotEmpty).toList();
+    return parts.isEmpty ? 'OpenStreetMap station' : parts.join(', ');
   }
 
   // Calculate distance from current location to station
@@ -720,102 +832,133 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         const SizedBox(height: 24),
                         // Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.green,
-                                  side: const BorderSide(
-                                      color: Colors.green, width: 2),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
+                        if ((station['source'] ?? 'approved') == 'osm')
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.blue,
+                                side: const BorderSide(color: Colors.blue, width: 2),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
                                 ),
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          ChargingStationDetailsScreen(
-                                        station: station,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: const Text(
-                                  'view',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    letterSpacing: 1,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('OSM station loaded from map data (view-only on Home).'),
                                   ),
+                                );
+                              },
+                              child: const Text(
+                                'OSM station',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green[400],
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18),
+                          )
+                        else
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.green,
+                                    side: const BorderSide(
+                                        color: Colors.green, width: 2),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 14),
                                   ),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                ),
-                                onPressed: () {
-                                  // Check if station is available for booking
-                                  final bool isAvailable = station['available'] ?? true;
-                                  final String status = station['status'] ?? 'active';
-                                  
-                                  if (!isAvailable || status != 'active') {
+                                  onPressed: () {
                                     Navigator.pop(context);
-                                    String message = 'This station is not available for booking.';
-                                    if (!isAvailable) {
-                                      message = 'This station is currently unavailable for booking.';
-                                    } else if (status == 'maintenance' || status == 'under_maintenance') {
-                                      message = 'This station is under maintenance and cannot be booked at this time.';
-                                    } else if (status == 'inactive') {
-                                      message = 'This station is inactive and cannot be booked.';
-                                    }
-                                    
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(message),
-                                        backgroundColor: Colors.orange,
-                                        duration: const Duration(seconds: 3),
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            ChargingStationDetailsScreen(
+                                          station: station,
+                                        ),
                                       ),
                                     );
-                                    return;
-                                  }
-                                  
-                                  Navigator.pop(context);
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => CreateBookingScreen(
-                                        station: station,
-                                      ),
+                                  },
+                                  child: const Text(
+                                    'view',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      letterSpacing: 1,
                                     ),
-                                  );
-                                },
-                                child: const Text(
-                                  'book',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    letterSpacing: 1,
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[400],
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 14),
+                                  ),
+                                  onPressed: () {
+                                    // Check if station is available for booking
+                                    final bool isAvailable = station['available'] ?? true;
+                                    final String status = station['status'] ?? 'active';
+
+                                    if (!isAvailable || status != 'active') {
+                                      Navigator.pop(context);
+                                      String message = 'This station is not available for booking.';
+                                      if (!isAvailable) {
+                                        message = 'This station is currently unavailable for booking.';
+                                      } else if (status == 'maintenance' || status == 'under_maintenance') {
+                                        message = 'This station is under maintenance and cannot be booked at this time.';
+                                      } else if (status == 'inactive') {
+                                        message = 'This station is inactive and cannot be booked.';
+                                      }
+
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(message),
+                                          backgroundColor: Colors.orange,
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    Navigator.pop(context);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CreateBookingScreen(
+                                          station: station,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text(
+                                    'Book slot',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -926,6 +1069,25 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12.0),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.alt_route),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TripPlannerScreen(),
+                          ),
+                        );
+                      },
+                      color: Colors.green,
                     ),
                   ),
                   const SizedBox(width: 8.0),
@@ -1066,6 +1228,10 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 4),
                 Row(
                   children: [
+                    if ((station['source'] ?? 'approved') == 'osm') ...[
+                      _sourceBadge(station),
+                      const SizedBox(width: 8),
+                    ],
                     Text(
                       station['available'] ? 'Available' : 'Not Available',
                       style: TextStyle(
@@ -1105,6 +1271,14 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
             onTap: () {
+              if ((station['source'] ?? 'approved') == 'osm') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('OSM stations are map-sourced. Booking/details are only for approved in-app stations.'),
+                  ),
+                );
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1231,6 +1405,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   // Build status chip for station popup
   Widget _buildStatusChip(Map<String, dynamic> station) {
+    if ((station['source'] ?? 'approved') == 'osm') {
+      return _sourceBadge(station);
+    }
+
     final bool isAvailable = station['available'] ?? true;
     final String status = station['status'] ?? 'active';
     
@@ -1269,6 +1447,28 @@ class _HomeScreenState extends State<HomeScreen>
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 13,
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceBadge(Map<String, dynamic> station) {
+    final source = (station['source'] ?? 'approved').toString();
+    final isOsm = source == 'osm';
+    final bg = isOsm ? Colors.blue[100]! : Colors.green[100]!;
+    final fg = isOsm ? Colors.blue[800]! : Colors.green[800]!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        isOsm ? 'OSM' : 'Approved',
+        style: TextStyle(
+          color: fg,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
         ),
       ),
     );

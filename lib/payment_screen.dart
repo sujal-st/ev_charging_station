@@ -178,6 +178,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   _buildSummaryRow('Plug Type', widget.booking.plugType),
                   const SizedBox(height: 8),
                   _buildSummaryRow('Duration', widget.booking.formattedDuration),
+                  if (widget.booking.discountAmount > 0) ...[
+                    const SizedBox(height: 8),
+                    _buildSummaryRow(
+                      'Discount (${(widget.booking.discountPercent * 100).toInt()}%)',
+                      '- Rs${widget.booking.discountAmount.toStringAsFixed(2)}',
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSummaryRow('Points Redeemed', '${widget.booking.pointsRedeemed}'),
+                  ],
                   const Divider(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -420,6 +429,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             : Colors.blue[700],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Reward points are awarded after booking completion. Cancelled bookings do not earn points.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                   ),
                 ],
               ),

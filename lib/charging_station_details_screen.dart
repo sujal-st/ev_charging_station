@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'providers/auth_provider.dart';
 import 'providers/booking_provider.dart';
-import 'NavigationScreen.dart';
+import 'trip_planner_screen.dart';
 import 'create_booking_screen.dart';
 
 class ChargingStationDetailsScreen extends StatefulWidget {
@@ -446,58 +446,13 @@ class _ChargingStationDetailsScreenState
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () async {
-                            try {
-                              // Request location permission if not granted
-                              LocationPermission permission =
-                                  await Geolocator.checkPermission();
-                              if (permission == LocationPermission.denied ||
-                                  permission ==
-                                      LocationPermission.deniedForever) {
-                                permission =
-                                    await Geolocator.requestPermission();
-                                if (permission != LocationPermission.always &&
-                                    permission !=
-                                        LocationPermission.whileInUse) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content:
-                                            Text('Location permission denied')),
-                                  );
-                                  return;
-                                }
-                              }
-
-                              LatLng start = await getCurrentLocation();
-                              LatLng end = LatLng(_getLatitude(widget.station),
-                                  _getLongitude(widget.station));
-                              List<LatLng> routePoints =
-                                  await fetchRoute(start, end);
-
-                              if (routePoints.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('No route found')),
-                                );
-                                return;
-                              }
-
-                              if (!mounted) return;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => NavigationScreen(
-                                    start: start,
-                                    end: end,
-                                    routePoints: routePoints,
-                                  ),
-                                ),
-                              );
-                            } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
-                              );
-                            }
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const TripPlannerScreen(),
+                              ),
+                            );
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.green,

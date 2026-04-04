@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/booking_model.dart';
+import '../../config/reward_config.dart';
 
 class StationAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -175,6 +176,12 @@ class StationAdminService {
         final bookingData = bookingDoc.data() as Map<String, dynamic>;
         final currentStatus = bookingData['status'] as String;
         final stationId = bookingData['stationId'] as String?;
+        final userId = (bookingData['userId'] ?? '').toString();
+        final pointsEarned = bookingData['pointsEarned'] ?? RewardConfig.pointsPerCompletedBooking;
+        final rewardPointsGranted = bookingData['rewardPointsGranted'] ?? false;
+        final rewardPointsReversed = bookingData['rewardPointsReversed'] ?? false;
+        final pointsRedeemed = bookingData['pointsRedeemed'] ?? 0;
+        final redeemedPointsRefunded = bookingData['redeemedPointsRefunded'] ?? false;
         
         // Read station document for ownership verification (if needed)
         DocumentSnapshot? stationDocForOwnership;
@@ -217,6 +224,14 @@ class StationAdminService {
         if (!_isValidStatusTransition(currentStatus, status)) {
           throw Exception('Invalid status transition from $currentStatus to $status');
         }
+
+        DocumentSnapshot? userDoc;
+        final needsUserDoc =
+            (status == 'completed' && rewardPointsGranted != true) ||
+            (status == 'cancelled' && pointsRedeemed is int && pointsRedeemed > 0 && redeemedPointsRefunded != true);
+        if (needsUserDoc && userId.isNotEmpty) {
+          userDoc = await transaction.get(_firestore.collection('users').doc(userId));
+        }
         
         // ========== PHASE 2: ALL WRITES AFTER READS ==========
         // Update booking status
@@ -226,6 +241,50 @@ class StationAdminService {
           'lastStatus': currentStatus,
           'statusUpdatedAt': FieldValue.serverTimestamp(),
         });
+
+        if (status == 'completed' && rewardPointsGranted != true && userId.isNotEmpty && pointsEarned is int && pointsEarned > 0) {
+          final userRef = _firestore.collection('users').doc(userId);
+          if (userDoc == null || userDoc.exists) {
+            transaction.update(userRef, {
+              'rewardPoints': FieldValue.increment(pointsEarned),
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+            transaction.update(bookingRef, {
+              'rewardPointsGranted': true,
+              'rewardGrantedAt': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+
+        if (status == 'cancelled' && userId.isNotEmpty) {
+          final userRef = _firestore.collection('users').doc(userId);
+          final updates = <String, dynamic>{
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+          int netDelta = 0;
+
+          final reversalPoints = 10;
+          if (rewardPointsGranted == true && rewardPointsReversed != true) {
+            updates['rewardPointsReversed'] = true;
+            updates['pointsCancellationDeducted'] = reversalPoints;
+            netDelta -= reversalPoints;
+          }
+
+          if (pointsRedeemed is int && pointsRedeemed > 0 && redeemedPointsRefunded != true) {
+            updates['redeemedPointsRefunded'] = true;
+            netDelta += pointsRedeemed;
+          }
+
+          if (netDelta != 0) {
+            updates['rewardPoints'] = FieldValue.increment(netDelta);
+          }
+
+          if (updates.length > 1) {
+            if (userDoc == null || userDoc.exists) {
+              transaction.update(userRef, updates);
+            }
+          }
+        }
         
         // If status is completed or cancelled, update station availability
         if (needsAvailabilityUpdate && stationDocForAvailability != null && stationDocForAvailability.exists) {

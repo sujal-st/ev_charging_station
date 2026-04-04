@@ -60,6 +60,9 @@ class FirebaseAuthService {
           'isLoggedIn': true,
           'hasSeenOnboarding': true,
           'role': role ?? 'ev_charging_user',
+          'rewardPoints': 0,
+          'subscriptionTier': role == 'charging_station_user' ? 'basic' : 'basic',
+          'subscriptionStatus': role == 'charging_station_user' ? 'active' : 'inactive',
         };
         
         await _firestore.collection('users').doc(userCredential.user!.uid).set(userData);

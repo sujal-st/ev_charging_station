@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/booking_model.dart';
+import '../config/reward_config.dart';
 
 class BookingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -121,6 +122,9 @@ class BookingService {
     required double amount,
     required DateTime startTime,
     required int connectorIndex,
+    int pointsRedeemed = 0,
+    double discountPercent = 0,
+    double discountAmount = 0,
     String? notes,
     String? vehicleId,
     String? vehicleModel,
@@ -131,6 +135,19 @@ class BookingService {
       
       // Use transaction to ensure atomic booking creation and prevent double booking
       return await _firestore.runTransaction((transaction) async {
+        final userRef = _firestore.collection('users').doc(userId);
+        final userDoc = await transaction.get(userRef);
+        final currentPoints = (userDoc.data()?['rewardPoints'] ?? 0) as int;
+
+        if (pointsRedeemed > 0) {
+          if (pointsRedeemed < RewardConfig.minRedeemPoints) {
+            throw Exception('Minimum ${RewardConfig.minRedeemPoints} points are required for discount redemption.');
+          }
+          if (currentPoints < pointsRedeemed) {
+            throw Exception('Not enough reward points available.');
+          }
+        }
+
         // ========== PHASE 1: ALL READS FIRST ==========
         // Check if connector is available by querying existing bookings
         // Only active bookings (upcoming, in_progress) are considered.
@@ -171,6 +188,13 @@ class BookingService {
           'maxPower': maxPower,
           'durationMinutes': durationMinutes,
           'amount': amount,
+          'discountPercent': discountPercent,
+          'discountAmount': discountAmount,
+          'pointsRedeemed': pointsRedeemed,
+          'pointsEarned': RewardConfig.pointsPerCompletedBooking,
+          'rewardPointsGranted': true,
+          'rewardPointsReversed': false,
+          'redeemedPointsRefunded': false,
           'status': 'upcoming',
           'paymentStatus': 'pending', // Default payment status
           'bookingDate': bookingDate,
@@ -187,6 +211,12 @@ class BookingService {
 
         final docRef = _firestore.collection('bookings').doc();
         transaction.set(docRef, bookingData);
+
+        final netPointChange = RewardConfig.pointsPerCompletedBooking - pointsRedeemed;
+        transaction.update(userRef, {
+          'rewardPoints': FieldValue.increment(netPointChange),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
         
         return docRef.id;
       });
@@ -325,18 +355,61 @@ class BookingService {
   // Cancel a booking
   Future<void> cancelBooking(String bookingId, {String? cancellationReason}) async {
     try {
-      final updateData = {
-        'status': 'cancelled',
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      
-      if (cancellationReason != null) {
-        updateData['cancellationReason'] = cancellationReason;
-      } else {
-        updateData['cancellationReason'] = 'user_cancelled';
-      }
-      
-      await _firestore.collection('bookings').doc(bookingId).update(updateData);
+      await _firestore.runTransaction((transaction) async {
+        final bookingRef = _firestore.collection('bookings').doc(bookingId);
+        final bookingDoc = await transaction.get(bookingRef);
+        if (!bookingDoc.exists) {
+          throw Exception('Booking not found');
+        }
+
+        final data = bookingDoc.data() as Map<String, dynamic>;
+        final userId = (data['userId'] ?? '').toString();
+        final redeemed = data['pointsRedeemed'] ?? 0;
+        final refunded = data['redeemedPointsRefunded'] ?? false;
+        final rewardGranted = data['rewardPointsGranted'] ?? false;
+        final rewardReversed = data['rewardPointsReversed'] ?? false;
+        final pointsEarned = data['pointsEarned'] ?? RewardConfig.pointsPerCompletedBooking;
+
+        final reason = cancellationReason ?? 'user_cancelled';
+        final reversalPoints = reason == 'station_cancelled' || reason == 'admin_cancelled'
+            ? 10
+            : 20;
+
+        final updateData = <String, dynamic>{
+          'status': 'cancelled',
+          'updatedAt': FieldValue.serverTimestamp(),
+          'cancellationReason': reason,
+        };
+
+        if (userId.isNotEmpty) {
+          final userRef = _firestore.collection('users').doc(userId);
+          final updates = <String, dynamic>{
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+          int netDelta = 0;
+
+          if (rewardGranted == true && rewardReversed != true && pointsEarned is int && pointsEarned > 0) {
+            updateData['rewardPointsReversed'] = true;
+            updateData['pointsCancellationDeducted'] = reversalPoints;
+            netDelta -= reversalPoints;
+          }
+
+          if (redeemed is int && redeemed > 0 && refunded != true) {
+            updateData['redeemedPointsRefunded'] = true;
+            netDelta += redeemed;
+          }
+
+          if (netDelta != 0) {
+            updates['rewardPoints'] = FieldValue.increment(netDelta);
+          }
+
+          if (updates.length > 1) {
+            transaction.update(userRef, updates);
+          }
+        }
+
+        transaction.update(bookingRef, updateData);
+      });
     } catch (e) {
       throw Exception('Failed to cancel booking: $e');
     }
@@ -361,12 +434,47 @@ class BookingService {
   // immediately available for other users to book.
   Future<void> completeBooking(String bookingId) async {
     try {
-      await _firestore.collection('bookings').doc(bookingId).update({
-        'status': 'completed',
-        'updatedAt': FieldValue.serverTimestamp(),
+      await _firestore.runTransaction((transaction) async {
+        final bookingRef = _firestore.collection('bookings').doc(bookingId);
+        final bookingDoc = await transaction.get(bookingRef);
+        if (!bookingDoc.exists) {
+          throw Exception('Booking not found');
+        }
+
+        final data = bookingDoc.data() as Map<String, dynamic>;
+        final userId = (data['userId'] ?? '').toString();
+        final rewardGranted = data['rewardPointsGranted'] ?? false;
+        final pointsEarned = data['pointsEarned'] ?? RewardConfig.pointsPerCompletedBooking;
+
+        transaction.update(bookingRef, {
+          'status': 'completed',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (rewardGranted != true && userId.isNotEmpty && pointsEarned is int && pointsEarned > 0) {
+          final userRef = _firestore.collection('users').doc(userId);
+          transaction.update(userRef, {
+            'rewardPoints': FieldValue.increment(pointsEarned),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          transaction.update(bookingRef, {
+            'rewardPointsGranted': true,
+            'rewardGrantedAt': FieldValue.serverTimestamp(),
+          });
+        }
       });
     } catch (e) {
       throw Exception('Failed to complete booking: $e');
+    }
+  }
+
+  Future<int> getUserRewardPoints(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (!doc.exists) return 0;
+      return (doc.data()?['rewardPoints'] ?? 0) as int;
+    } catch (e) {
+      throw Exception('Failed to fetch reward points: $e');
     }
   }
 

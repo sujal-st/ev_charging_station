@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 import 'bookingscreen.dart';
@@ -9,6 +10,8 @@ import 'personal_info_screen.dart';
 import 'payment_methods_screen.dart';
 import 'help_center_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'package:provider/provider.dart';
+import 'providers/auth_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -132,6 +135,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: Colors.black54,
       ),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildPointsCard(int points) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade50, Colors.green.shade100],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.green.shade600,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.workspace_premium, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Reward Points',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$points points',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  points >= 100
+                      ? 'You can redeem 100 points for 10% off.'
+                      : 'Earn more points to unlock discounts.',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: Colors.black54),
+        ],
+      ),
     );
   }
 
@@ -266,10 +334,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
           
           const Divider(height: 1),
 
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              final user = authProvider.currentUser;
+              if (user == null) {
+                return const SizedBox(height: 16);
+              }
+
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data();
+                  final points = (data?['rewardPoints'] ?? authProvider.rewardPoints) as int;
+
+                  return Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      _buildPointsCard(points),
+                      const SizedBox(height: 8),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+
+          const Divider(height: 1),
+
           // Navigation Items
           Expanded(
             child: ListView(
               children: [
+                _buildNavigationItem(
+                  icon: Icons.workspace_premium,
+                  title: 'My points',
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          title: const Text('Reward points'),
+                          content: Consumer<AuthProvider>(
+                            builder: (context, authProvider, child) {
+                              final user = authProvider.currentUser;
+                              if (user == null) {
+                                return const Text('Please log in to view reward points.');
+                              }
+
+                              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user.uid)
+                                    .snapshots(),
+                                builder: (context, snapshot) {
+                                  final data = snapshot.data?.data();
+                                  final points = (data?['rewardPoints'] ?? authProvider.rewardPoints) as int;
+                                  return Text(
+                                    'You currently have $points points.\n\n'
+                                    '100 points gives you 10% off a booking.',
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
                 _buildNavigationItem(
                   icon: Icons.credit_card,
                   title: 'Payment methods',

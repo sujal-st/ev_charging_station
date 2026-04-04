@@ -14,6 +14,10 @@ class UserModel {
   final bool isLoggedIn;
   final bool hasSeenOnboarding;
   final String role;
+  final int rewardPoints;
+  final String subscriptionTier;
+  final String subscriptionStatus;
+  final DateTime? subscriptionUpdatedAt;
   final DateTime? lastLoginAt;
   final DateTime? lastLogoutAt;
 
@@ -31,6 +35,10 @@ class UserModel {
     this.isLoggedIn = false,
     this.hasSeenOnboarding = false,
     this.role = 'user',
+    this.rewardPoints = 0,
+    this.subscriptionTier = 'basic',
+    this.subscriptionStatus = 'inactive',
+    this.subscriptionUpdatedAt,
     this.lastLoginAt,
     this.lastLogoutAt,
   });
@@ -61,6 +69,12 @@ class UserModel {
       isLoggedIn: data['isLoggedIn'] ?? false,
       hasSeenOnboarding: data['hasSeenOnboarding'] ?? false,
       role: data['role'] ?? 'user',
+      rewardPoints: data['rewardPoints'] ?? 0,
+      subscriptionTier: data['subscriptionTier'] ?? 'basic',
+      subscriptionStatus: data['subscriptionStatus'] ?? 'inactive',
+      subscriptionUpdatedAt: data['subscriptionUpdatedAt'] is Timestamp
+          ? (data['subscriptionUpdatedAt'] as Timestamp).toDate()
+          : null,
       lastLoginAt: data['lastLoginAt'] is Timestamp
           ? (data['lastLoginAt'] as Timestamp).toDate()
           : null,
@@ -84,6 +98,9 @@ class UserModel {
       'isLoggedIn': isLoggedIn,
       'hasSeenOnboarding': hasSeenOnboarding,
       'role': role,
+      'rewardPoints': rewardPoints,
+      'subscriptionTier': subscriptionTier,
+      'subscriptionStatus': subscriptionStatus,
     };
   }
 
@@ -102,6 +119,10 @@ class UserModel {
     bool? isLoggedIn,
     bool? hasSeenOnboarding,
     String? role,
+    int? rewardPoints,
+    String? subscriptionTier,
+    String? subscriptionStatus,
+    DateTime? subscriptionUpdatedAt,
     DateTime? lastLoginAt,
     DateTime? lastLogoutAt,
   }) {
@@ -119,6 +140,10 @@ class UserModel {
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
       role: role ?? this.role,
+      rewardPoints: rewardPoints ?? this.rewardPoints,
+      subscriptionTier: subscriptionTier ?? this.subscriptionTier,
+      subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
+      subscriptionUpdatedAt: subscriptionUpdatedAt ?? this.subscriptionUpdatedAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       lastLogoutAt: lastLogoutAt ?? this.lastLogoutAt,
     );

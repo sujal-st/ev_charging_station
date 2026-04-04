@@ -4,6 +4,7 @@ import 'providers/auth_provider.dart';
 import 'providers/booking_provider.dart';
 import 'models/booking_model.dart';
 import 'services/booking_service.dart';
+import 'config/reward_config.dart';
 import 'payment_screen.dart';
 
 class CreateBookingScreen extends StatefulWidget {
@@ -29,6 +30,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   Map<int, bool> _connectorAvailability = {}; // Map of connector index to availability
   List<Map<String, DateTime>> _bookedTimeSlots = []; // Booked time slots for selected connector
   bool _isLoadingTimeSlots = false;
+  int _userRewardPoints = 0;
+  bool _isLoadingRewardPoints = false;
+  bool _useRewardPoints = false;
 
   final List<int> _durationOptions = [30, 60, 90, 120, 180, 240]; // minutes
   final BookingService _bookingService = BookingService();
@@ -48,7 +52,35 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkConnectorAvailability();
+      _loadUserRewardPoints();
     });
+  }
+
+  Future<void> _loadUserRewardPoints() async {
+    if (!mounted) return;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final user = authProvider.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _isLoadingRewardPoints = true;
+    });
+
+    try {
+      final points = await _bookingService.getUserRewardPoints(user.uid);
+      if (!mounted) return;
+      setState(() {
+        _userRewardPoints = points;
+      });
+    } catch (_) {
+      // Silent fallback to zero points.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingRewardPoints = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadBookedTimeSlots() async {
@@ -323,9 +355,26 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
-  double _calculateAmount() {
+  double _calculateBaseAmount() {
     // Simple pricing: Rs 0.25 per minute
     return _selectedDuration * 0.25;
+  }
+
+  bool _canRedeem() {
+    return _userRewardPoints >= RewardConfig.minRedeemPoints;
+  }
+
+  int _pointsToRedeem() {
+    return (_useRewardPoints && _canRedeem()) ? RewardConfig.minRedeemPoints : 0;
+  }
+
+  double _calculateDiscountAmount() {
+    if (!_useRewardPoints || !_canRedeem()) return 0;
+    return _calculateBaseAmount() * RewardConfig.redeemDiscountPercent;
+  }
+
+  double _calculateAmount() {
+    return _calculateBaseAmount() - _calculateDiscountAmount();
   }
 
   Future<void> _createBooking() async {
@@ -437,6 +486,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         amount: _calculateAmount(),
         startTime: startTime,
         connectorIndex: _selectedConnectorIndex!,
+        pointsRedeemed: _pointsToRedeem(),
+        discountPercent: _useRewardPoints ? RewardConfig.redeemDiscountPercent : 0,
+        discountAmount: _calculateDiscountAmount(),
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       );
 
@@ -969,6 +1021,55 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             ),
             const SizedBox(height: 24),
 
+            // Reward points redemption
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.amber[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Reward Points',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isLoadingRewardPoints
+                        ? 'Loading your points...'
+                        : 'Available points: $_userRewardPoints',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${RewardConfig.minRedeemPoints} points = ${(RewardConfig.redeemDiscountPercent * 100).toInt()}% off',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 10),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Use reward points for discount'),
+                    subtitle: !_canRedeem()
+                        ? const Text('You need at least 100 points to redeem.')
+                        : null,
+                    value: _useRewardPoints && _canRedeem(),
+                    onChanged: _canRedeem()
+                        ? (v) {
+                            setState(() {
+                              _useRewardPoints = v ?? false;
+                            });
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // Booking Summary
             Container(
               padding: const EdgeInsets.all(16),
@@ -1015,7 +1116,28 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Amount:'),
+                      const Text('Base Amount:'),
+                      Text('Rs ${_calculateBaseAmount().toStringAsFixed(2)}'),
+                    ],
+                  ),
+                  if (_calculateDiscountAmount() > 0) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Discount (${(RewardConfig.redeemDiscountPercent * 100).toInt()}%):'),
+                        Text(
+                          '- Rs ${_calculateDiscountAmount().toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.green),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Payable Amount:'),
                       Text(
                         'Rs ${_calculateAmount().toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.bold),

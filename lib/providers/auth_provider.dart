@@ -13,6 +13,9 @@ class AuthProvider extends ChangeNotifier {
   UserModel? get userData => _userData;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentUser != null;
+  int get rewardPoints => _userData?.rewardPoints ?? 0;
+  String get subscriptionTier => _userData?.subscriptionTier ?? 'basic';
+  String get subscriptionStatus => _userData?.subscriptionStatus ?? 'inactive';
 
   AuthProvider() {
     _init();
@@ -105,6 +108,29 @@ class AuthProvider extends ChangeNotifier {
         rethrow;
       }
     }
+  }
+
+  Future<void> reloadUserData() async {
+    if (_currentUser != null) {
+      await _loadUserData(_currentUser!.uid);
+    }
+  }
+
+  Future<void> updateSubscriptionPlan({
+    required String tier,
+    required String status,
+  }) async {
+    if (_currentUser == null) return;
+
+    await _authService.updateUserProfile(
+      uid: _currentUser!.uid,
+      data: {
+        'subscriptionTier': tier,
+        'subscriptionStatus': status,
+        'subscriptionUpdatedAt': DateTime.now().toIso8601String(),
+      },
+    );
+    await _loadUserData(_currentUser!.uid);
   }
 
   void _setLoading(bool loading) {

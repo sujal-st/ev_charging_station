@@ -13,6 +13,7 @@ import 'widgets/sales_overview_section.dart';
 import 'station_bookings_screen.dart';
 import 'admin_bookings_screen.dart';
 import 'payment_tracking_screen.dart';
+import 'subscription_plan_screen.dart';
 
 class StationAdminDashboard extends StatefulWidget {
   const StationAdminDashboard({super.key});
@@ -232,6 +233,19 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                 );
               },
             ),
+            const SizedBox(height: 12),
+            QuickActionCard(
+              title: 'Subscription Plan',
+              icon: Icons.workspace_premium,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SubscriptionPlanScreen(),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -409,6 +423,17 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.workspace_premium),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SubscriptionPlanScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.map),
             onPressed: () {

@@ -32,6 +32,12 @@ class BookingModel {
   final DateTime? confirmedAt;
   final Map<String, dynamic>? paymentMetadata; // Additional payment info
   final String? cancellationReason; // 'user_cancelled', 'no_show', 'admin_cancelled', etc.
+  final int pointsEarned;
+  final int pointsRedeemed;
+  final double discountPercent;
+  final double discountAmount;
+  final bool rewardPointsGranted;
+  final bool redeemedPointsRefunded;
 
   BookingModel({
     required this.id,
@@ -64,6 +70,12 @@ class BookingModel {
     this.confirmedAt,
     this.paymentMetadata,
     this.cancellationReason,
+    this.pointsEarned = 0,
+    this.pointsRedeemed = 0,
+    this.discountPercent = 0,
+    this.discountAmount = 0,
+    this.rewardPointsGranted = false,
+    this.redeemedPointsRefunded = false,
   });
 
   // Create from Firestore document
@@ -115,6 +127,12 @@ class BookingModel {
           ? Map<String, dynamic>.from(data['paymentMetadata'])
           : null,
       cancellationReason: data['cancellationReason'],
+      pointsEarned: data['pointsEarned'] ?? 0,
+      pointsRedeemed: data['pointsRedeemed'] ?? 0,
+      discountPercent: (data['discountPercent'] ?? 0.0).toDouble(),
+      discountAmount: (data['discountAmount'] ?? 0.0).toDouble(),
+      rewardPointsGranted: data['rewardPointsGranted'] ?? false,
+      redeemedPointsRefunded: data['redeemedPointsRefunded'] ?? false,
     );
   }
 
@@ -148,6 +166,12 @@ class BookingModel {
       'confirmedAt': confirmedAt,
       'paymentMetadata': paymentMetadata,
       'cancellationReason': cancellationReason,
+      'pointsEarned': pointsEarned,
+      'pointsRedeemed': pointsRedeemed,
+      'discountPercent': discountPercent,
+      'discountAmount': discountAmount,
+      'rewardPointsGranted': rewardPointsGranted,
+      'redeemedPointsRefunded': redeemedPointsRefunded,
     };
   }
 
@@ -183,6 +207,12 @@ class BookingModel {
     DateTime? confirmedAt,
     Map<String, dynamic>? paymentMetadata,
     String? cancellationReason,
+    int? pointsEarned,
+    int? pointsRedeemed,
+    double? discountPercent,
+    double? discountAmount,
+    bool? rewardPointsGranted,
+    bool? redeemedPointsRefunded,
   }) {
     return BookingModel(
       id: id ?? this.id,
@@ -215,6 +245,12 @@ class BookingModel {
       confirmedAt: confirmedAt ?? this.confirmedAt,
       paymentMetadata: paymentMetadata ?? this.paymentMetadata,
       cancellationReason: cancellationReason ?? this.cancellationReason,
+      pointsEarned: pointsEarned ?? this.pointsEarned,
+      pointsRedeemed: pointsRedeemed ?? this.pointsRedeemed,
+      discountPercent: discountPercent ?? this.discountPercent,
+      discountAmount: discountAmount ?? this.discountAmount,
+      rewardPointsGranted: rewardPointsGranted ?? this.rewardPointsGranted,
+      redeemedPointsRefunded: redeemedPointsRefunded ?? this.redeemedPointsRefunded,
     );
   }
 
