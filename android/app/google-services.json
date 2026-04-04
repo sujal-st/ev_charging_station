@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "62918470007",
+    "project_id": "ev-charging-station-855bc",
+    "storage_bucket": "ev-charging-station-855bc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:62918470007:android:77335e8a99c426673ed972",
+        "android_client_info": {
+          "package_name": "com.example.ev_charging_station"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCH8k7QZ_PEA-xzo-zNEPoogeDIdNPvssc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

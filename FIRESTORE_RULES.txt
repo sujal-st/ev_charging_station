@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is super admin
+    function isSuperUser() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_user';
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Users can read/write their own data
+      // Super users can read/write any user's data
+      allow read: if request.auth != null && 
+                     (request.auth.uid == userId || isSuperUser());
+      
+      allow create: if request.auth != null && 
+                       (request.auth.uid == userId || isSuperUser());
+      
+      allow update: if request.auth != null && 
+                       (request.auth.uid == userId || isSuperUser());
+      
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == userId || isSuperUser());
+    }
+    
+    // Charging Stations collection
+    match /charging_stations/{stationId} {
+      // Anyone can read stations (for public listing on map)
+      allow read: if true;
+      
+      // Owner can create their stations, or super user can create any
+      allow create: if request.auth != null && 
+                      (request.resource.data.ownerId == request.auth.uid || isSuperUser());
+      
+      // Owner can update their stations, or super user can update any
+      allow update: if request.auth != null && 
+                     ((resource.data.ownerId != null &&
+                       resource.data.ownerId == request.auth.uid) || isSuperUser());
+      
+      // Owner can delete their stations, or super user can delete any
+      allow delete: if request.auth != null && 
+                     (resource.data.ownerId == request.auth.uid || isSuperUser());
+    }
+    
+    // Bookings collection
+    match /bookings/{bookingId} {
+      // Users can read their own bookings
+      // Station admins can read bookings (app filters to show only their station bookings)
+      // Super users can read all bookings
+      allow read: if request.auth != null;
+      
+      // Users can create bookings for themselves, or super user can create any
+      allow create: if request.auth != null && 
+                       (request.auth.uid == request.resource.data.userId || isSuperUser());
+      
+      // Users can update their own bookings OR station admins can update
+      // Super users can update any booking
+      // The app's updateBookingStatus() method verifies station ownership before updating
+      allow update: if request.auth != null;
+      
+      // Users can delete their own bookings, or super user can delete any
+      allow delete: if request.auth != null && 
+                     (request.auth.uid == resource.data.userId || isSuperUser());
+    }
+    
+    // Vehicles collection
+    match /vehicles/{vehicleId} {
+      // Users can access their own vehicles, or super user can access any
+      allow read: if request.auth != null && 
+                     (request.auth.uid == resource.data.userId || isSuperUser());
+      
+      allow create: if request.auth != null && 
+                       (request.auth.uid == request.resource.data.userId || isSuperUser());
+      
+      allow update: if request.auth != null && 
+                       (request.auth.uid == resource.data.userId || isSuperUser());
+      
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.userId || isSuperUser());
+    }
+  }
+}

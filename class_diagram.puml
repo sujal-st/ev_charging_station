@@ -1,0 +1,136 @@
+@startuml EV_Charging_Station_Class_Diagram
+
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor LightBlue
+skinparam classBorderColor DarkBlue
+
+package "Models" {
+  class UserModel {
+    -uid: String
+    -email: String
+    -name: String
+    -role: String
+    -createdAt: DateTime
+    -updatedAt: DateTime
+    +fromFirestore(data): UserModel
+    +toFirestore(): Map
+  }
+
+  class BookingModel {
+    -id: String
+    -userId: String
+    -stationId: String
+    -stationName: String
+    -startTime: DateTime
+    -endTime: DateTime
+    -amount: double
+    -status: String
+    +fromFirestore(data, docId): BookingModel
+    +toFirestore(): Map
+  }
+
+  class VehicleModel {
+    -id: String
+    -userId: String
+    -brand: String
+    -model: String
+    -year: int
+    -plugType: String
+    +fromFirestore(data, docId): VehicleModel
+    +toFirestore(): Map
+  }
+
+  class PaymentModel {
+    -id: String
+    -bookingId: String
+    -userId: String
+    -amount: double
+    -paymentMethod: String
+    -status: String
+    -transactionId: String
+    -createdAt: DateTime
+    +processPayment(): boolean
+    +refundPayment(): boolean
+  }
+}
+
+package "Services" {
+  class BookingService {
+    -firestore: FirebaseFirestore
+    +createBooking(booking): Future<void>
+    +getUserBookings(userId): Future<List<BookingModel>>
+    +cancelBooking(bookingId): Future<void>
+  }
+
+  class PaymentService {
+    -paymentGateway: PaymentGateway
+    +initializePayment(booking): Future<PaymentModel>
+    +confirmPayment(paymentId): Future<boolean>
+    +handlePaymentCallback(response): void
+  }
+
+  class StationAdminService {
+    -firestore: FirebaseFirestore
+    +getOwnerStations(ownerId): Future<List<ChargingStation>>
+    +getAllOwnerBookings(ownerId): Future<List<BookingModel>>
+    +updateStationStatus(stationId, status): Future<void>
+  }
+}
+
+package "UI Screens" {
+  class HomeScreen {
+    -bookingService: BookingService
+    -locationService: LocationService
+    +build(): Widget
+    +findNearbyStations(): void
+  }
+
+  class BookingScreen {
+    -bookingService: BookingService
+    -paymentService: PaymentService
+    +createBooking(): void
+    +processPayment(): void
+  }
+
+  class StationAdminDashboard {
+    -adminService: StationAdminService
+    -selectedTab: int
+    +buildOverviewTab(): Widget
+    +buildStationsTab(): Widget
+    +buildBookingsTab(): Widget
+  }
+
+  class AdminBookingsScreen {
+    -adminService: StationAdminService
+    -bookings: List<BookingModel>
+    +loadBookings(): void
+    +updateBookingStatus(): void
+  }
+}
+
+package "External Integrations" {
+  class PaymentGateway {
+    +createPaymentIntent(amount): String
+    +verifyPayment(transactionId): boolean
+    +refundPayment(transactionId): boolean
+  }
+
+  class LocationService {
+    +getCurrentLocation(): Position
+    +searchNearbyStations(radius): List<ChargingStation>
+  }
+}
+
+' Relationships
+UserModel "1" -- "*" BookingModel : makes
+UserModel "1" -- "*" VehicleModel : owns
+BookingModel "1" -- "1" PaymentModel : has
+BookingService ..> BookingModel : uses
+PaymentService ..> PaymentModel : uses
+PaymentService ..> PaymentGateway : integrates
+HomeScreen ..> BookingService : uses
+BookingScreen ..> PaymentService : uses
+StationAdminService ..> BookingModel : manages
+StationAdminDashboard ..> StationAdminService : uses
+
+@enduml
