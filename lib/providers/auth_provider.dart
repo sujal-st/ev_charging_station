@@ -120,17 +120,38 @@ class AuthProvider extends ChangeNotifier {
     required String tier,
     required String status,
   }) async {
-    if (_currentUser == null) return;
+    final effectiveUser = _currentUser ?? _authService.currentUser;
+    if (effectiveUser == null) {
+      throw Exception('No authenticated user found. Please login again.');
+    }
+
+    final normalizedTier = tier.trim().toLowerCase();
+    final normalizedStatus = status.trim().toLowerCase();
 
     await _authService.updateUserProfile(
-      uid: _currentUser!.uid,
+      uid: effectiveUser.uid,
       data: {
-        'subscriptionTier': tier,
-        'subscriptionStatus': status,
+        'subscriptionTier': normalizedTier,
+        'subscriptionStatus': normalizedStatus,
         'subscriptionUpdatedAt': DateTime.now().toIso8601String(),
       },
     );
-    await _loadUserData(_currentUser!.uid);
+
+    // Read back immediately so UI reflects the persisted server value.
+    final updatedData = await _authService.getUserData(effectiveUser.uid);
+    if (updatedData == null) {
+      throw Exception('Subscription updated, but failed to read user data.');
+    }
+
+    final savedTier = (updatedData['subscriptionTier'] ?? 'basic').toString().trim().toLowerCase();
+    final savedStatus = (updatedData['subscriptionStatus'] ?? 'inactive').toString().trim().toLowerCase();
+
+    _userData = UserModel.fromFirestore(updatedData);
+    notifyListeners();
+
+    if (savedTier != normalizedTier || savedStatus != normalizedStatus) {
+      throw Exception('Subscription was not persisted correctly. Please try again.');
+    }
   }
 
   void _setLoading(bool loading) {

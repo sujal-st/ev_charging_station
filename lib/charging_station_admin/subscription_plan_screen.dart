@@ -18,8 +18,15 @@ class SubscriptionPlanScreen extends StatelessWidget {
       ),
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, child) {
+          if (authProvider.userData == null) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
           final currentTier = authProvider.subscriptionTier;
           final currentStatus = authProvider.subscriptionStatus;
+          final normalizedTier = currentTier.trim().toLowerCase();
           final statusLabel = _displaySubscriptionStatus(currentStatus);
 
           return SingleChildScrollView(
@@ -89,9 +96,9 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     'Basic station statistics',
                     'Map of your stations',
                   ],
-                  isCurrent: currentTier == 'basic',
-                  actionLabel: currentTier == 'basic' ? 'Current plan' : 'Switch to Basic',
-                  onTap: currentTier == 'basic'
+                  isCurrent: normalizedTier == 'basic',
+                  actionLabel: normalizedTier == 'basic' ? 'Current plan' : 'Switch to Basic',
+                  onTap: normalizedTier == 'basic'
                       ? null
                       : () => _updatePlan(context, 'basic', 'active'),
                 ),
@@ -108,9 +115,9 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     'Busy-day trend insights',
                     'Pro dashboard sections',
                   ],
-                  isCurrent: currentTier == 'pro',
-                  actionLabel: currentTier == 'pro' ? 'Current plan' : 'Upgrade to Pro',
-                  onTap: currentTier == 'pro'
+                  isCurrent: normalizedTier == 'pro',
+                  actionLabel: normalizedTier == 'pro' ? 'Current plan' : 'Upgrade to Pro',
+                  onTap: normalizedTier == 'pro'
                       ? null
                       : () => _showProUpgradeDialog(context),
                 ),
@@ -379,7 +386,9 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     if (selectedMethod == 'bank_transfer') {
                       final submitted = await _showBankTransferInterface(context);
                       if (!submitted) return;
-                      await _updatePlan(context, 'pro', 'live');
+                      final isUpdated = await _updatePlan(context, 'pro', 'live');
+                      if (!isUpdated) return;
+                      await context.read<AuthProvider>().reloadUserData();
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -391,7 +400,9 @@ class SubscriptionPlanScreen extends StatelessWidget {
                       return;
                     }
 
-                    await _updatePlan(context, 'pro', 'active');
+                    final isUpdated = await _updatePlan(context, 'pro', 'active');
+                    if (!isUpdated) return;
+                    await context.read<AuthProvider>().reloadUserData();
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -503,25 +514,27 @@ class SubscriptionPlanScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _updatePlan(BuildContext context, String tier, String status) async {
+  Future<bool> _updatePlan(BuildContext context, String tier, String status) async {
     final authProvider = context.read<AuthProvider>();
     try {
       await authProvider.updateSubscriptionPlan(tier: tier, status: status);
-      if (!context.mounted) return;
+      if (!context.mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Subscription updated to ${tier.toUpperCase()}'),
           backgroundColor: Colors.green,
         ),
       );
+      return true;
     } catch (e) {
-      if (!context.mounted) return;
+      if (!context.mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to update subscription: $e'),
           backgroundColor: Colors.red,
         ),
       );
+      return false;
     }
   }
 }
