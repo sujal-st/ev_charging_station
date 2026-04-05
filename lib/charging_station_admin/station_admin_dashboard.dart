@@ -14,6 +14,7 @@ import 'station_bookings_screen.dart';
 import 'admin_bookings_screen.dart';
 import 'payment_tracking_screen.dart';
 import 'subscription_plan_screen.dart';
+import 'pro_customer_flow_screen.dart';
 
 class StationAdminDashboard extends StatefulWidget {
   const StationAdminDashboard({super.key});
@@ -84,13 +85,13 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
       // Load statistics
       final statistics = await _adminService.getOwnerStatistics(user.uid);
       if (!mounted) return;
-      
+
       setState(() {
         _statistics = statistics;
       });
     } catch (e) {
       if (!mounted) return;
-      
+
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -101,7 +102,7 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
     }
   }
 
-  Widget _buildOverviewTab() {
+  Widget _buildOverviewTab({required bool hasProAnalytics}) {
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
       child: SingleChildScrollView(
@@ -147,7 +148,8 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                       width: cardWidth,
                       child: StatCard(
                         title: 'In Progress',
-                        value: _statistics['inProgressBookings']?.toString() ?? '0',
+                        value: _statistics['inProgressBookings']?.toString() ??
+                            '0',
                         icon: Icons.flash_on,
                         color: Colors.green,
                       ),
@@ -156,7 +158,8 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                       width: cardWidth,
                       child: StatCard(
                         title: 'Completed',
-                        value: _statistics['completedBookings']?.toString() ?? '0',
+                        value:
+                            _statistics['completedBookings']?.toString() ?? '0',
                         icon: Icons.check_circle,
                         color: Colors.teal,
                       ),
@@ -166,10 +169,10 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
               },
             ),
             const SizedBox(height: 32),
-            
+
             // Sales & Revenue Section
             const SalesOverviewSection(),
-            
+
             const SizedBox(height: 24),
             const Text(
               'Quick Actions',
@@ -202,7 +205,8 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
               onTap: () {
                 if (mounted) {
                   setState(() {
-                    _selectedIndex = 1; // Changed from _selectedTab to _selectedIndex
+                    _selectedIndex =
+                        1; // Changed from _selectedTab to _selectedIndex
                   });
                 }
               },
@@ -229,6 +233,32 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const PaymentTrackingScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            QuickActionCard(
+              title: 'Customer Flow Analytics',
+              icon: hasProAnalytics
+                  ? Icons.analytics_outlined
+                  : Icons.lock_outline,
+              onTap: () {
+                if (_hasProAnalyticsAccess(
+                    context.read<app_auth.AuthProvider>())) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ProCustomerFlowScreen(),
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SubscriptionPlanScreen(),
                   ),
                 );
               },
@@ -306,12 +336,12 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
         itemBuilder: (context, index) {
           final station = _stations[index];
           final bool isAvailable = station['available'] ?? false;
-          
+
           final verificationStatus = station['verificationStatus'] ?? 'pending';
           final isPending = verificationStatus == 'pending';
           final isApproved = verificationStatus == 'approved';
           final isRejected = verificationStatus == 'rejected';
-          
+
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
@@ -329,9 +359,10 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                   ),
                   // Verification Status Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isPending 
+                      color: isPending
                           ? Colors.orange.withOpacity(0.2)
                           : isApproved
                               ? Colors.green.withOpacity(0.2)
@@ -398,7 +429,8 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => EditChargingStationScreen(station: station),
+                    builder: (context) =>
+                        EditChargingStationScreen(station: station),
                   ),
                 ).then((result) {
                   if (result == true) {
@@ -417,8 +449,17 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
     return const AdminBookingsScreen();
   }
 
+  bool _hasProAnalyticsAccess(app_auth.AuthProvider authProvider) {
+    final tier = authProvider.subscriptionTier.trim().toLowerCase();
+    final status = authProvider.subscriptionStatus.trim().toLowerCase();
+    return tier == 'pro' && (status == 'active' || status == 'live');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<app_auth.AuthProvider>();
+    final hasProAnalytics = _hasProAnalyticsAccess(authProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
@@ -440,7 +481,8 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => AdminStationsMapScreen(stations: _stations),
+                  builder: (context) =>
+                      AdminStationsMapScreen(stations: _stations),
                 ),
               );
             },
@@ -463,7 +505,7 @@ class _StationAdminDashboardState extends State<StationAdminDashboard> {
           : IndexedStack(
               index: _selectedIndex,
               children: [
-                _buildOverviewTab(),
+                _buildOverviewTab(hasProAnalytics: hasProAnalytics),
                 _buildStationsTab(),
                 _buildBookingsTab(),
               ],

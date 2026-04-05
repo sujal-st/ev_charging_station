@@ -76,7 +76,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill('Current: ${currentTier.toUpperCase()}', Colors.white),
+                          _pill('Current: ${currentTier.toUpperCase()}',
+                              Colors.white),
                           _pill('Status: $statusLabel', Colors.white),
                         ],
                       ),
@@ -87,7 +88,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
                 _planCard(
                   context: context,
                   title: 'Basic',
-                  subtitle: 'Simple dashboard features for day-to-day station management.',
+                  subtitle:
+                      'Simple dashboard features for day-to-day station management.',
                   priceLabel: 'Free',
                   accentColor: Colors.blue,
                   features: const [
@@ -97,7 +99,9 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     'Map of your stations',
                   ],
                   isCurrent: normalizedTier == 'basic',
-                  actionLabel: normalizedTier == 'basic' ? 'Current plan' : 'Switch to Basic',
+                  actionLabel: normalizedTier == 'basic'
+                      ? 'Current plan'
+                      : 'Switch to Basic',
                   onTap: normalizedTier == 'basic'
                       ? null
                       : () => _updatePlan(context, 'basic', 'active'),
@@ -112,11 +116,14 @@ class SubscriptionPlanScreen extends StatelessWidget {
                   features: const [
                     'Heatmap of customer flow',
                     'Peak hours analytics',
+                    'Custom time-range customer bar chart',
                     'Busy-day trend insights',
                     'Pro dashboard sections',
                   ],
                   isCurrent: normalizedTier == 'pro',
-                  actionLabel: normalizedTier == 'pro' ? 'Current plan' : 'Upgrade to Pro',
+                  actionLabel: normalizedTier == 'pro'
+                      ? 'Current plan'
+                      : 'Upgrade to Pro',
                   onTap: normalizedTier == 'pro'
                       ? null
                       : () => _showProUpgradeDialog(context),
@@ -135,12 +142,18 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     children: [
                       const Text(
                         'Pro analytics preview',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 12),
-                      _previewRow(Icons.area_chart, 'Customer flow heatmap', 'See station traffic density by time and location.'),
+                      _previewRow(Icons.area_chart, 'Customer flow heatmap',
+                          'See station traffic density by time and location.'),
                       const SizedBox(height: 12),
-                      _previewRow(Icons.access_time, 'Peak hours', 'Identify the busiest hours to plan staffing and pricing.'),
+                      _previewRow(Icons.access_time, 'Peak hours',
+                          'Identify the busiest hours to plan staffing and pricing.'),
+                      const SizedBox(height: 12),
+                      _previewRow(Icons.bar_chart, 'Time-range bar chart',
+                          'Compare customer counts for any selected time window.'),
                     ],
                   ),
                 ),
@@ -201,13 +214,15 @@ class SubscriptionPlanScreen extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(fontSize: 13, color: Colors.black54),
+                      style:
+                          const TextStyle(fontSize: 13, color: Colors.black54),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: accentColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -279,7 +294,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
             children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 3),
-              Text(description, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              Text(description,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54)),
             ],
           ),
         ),
@@ -359,7 +375,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
                       });
                     },
                     title: const Text('Direct bank transfer'),
-                    subtitle: const Text('Transfer to the official company bank account.'),
+                    subtitle: const Text(
+                        'Transfer to the official company bank account.'),
                   ),
                   RadioListTile<String>(
                     contentPadding: EdgeInsets.zero,
@@ -371,7 +388,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
                       });
                     },
                     title: const Text('eSewa'),
-                    subtitle: const Text('Pay quickly using your eSewa wallet.'),
+                    subtitle:
+                        const Text('Pay quickly using your eSewa wallet.'),
                   ),
                 ],
               ),
@@ -384,15 +402,18 @@ class SubscriptionPlanScreen extends StatelessWidget {
                   onPressed: () async {
                     Navigator.pop(dialogContext);
                     if (selectedMethod == 'bank_transfer') {
-                      final submitted = await _showBankTransferInterface(context);
+                      final submitted =
+                          await _showBankTransferInterface(context);
                       if (!submitted) return;
-                      final isUpdated = await _updatePlan(context, 'pro', 'live');
+                      final isUpdated =
+                          await _updatePlan(context, 'pro', 'live');
                       if (!isUpdated) return;
                       await context.read<AuthProvider>().reloadUserData();
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Bank transfer details submitted. Pro is now LIVE.'),
+                          content: Text(
+                              'Bank transfer details submitted. Pro is now LIVE.'),
                           backgroundColor: Colors.blue,
                           duration: Duration(seconds: 4),
                         ),
@@ -400,13 +421,15 @@ class SubscriptionPlanScreen extends StatelessWidget {
                       return;
                     }
 
-                    final isUpdated = await _updatePlan(context, 'pro', 'active');
+                    final isUpdated =
+                        await _updatePlan(context, 'pro', 'active');
                     if (!isUpdated) return;
                     await context.read<AuthProvider>().reloadUserData();
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('eSewa payment selected. Pro service activated.'),
+                        content: Text(
+                            'eSewa payment selected. Pro service activated.'),
                         backgroundColor: Colors.blue,
                         duration: Duration(seconds: 4),
                       ),
@@ -514,7 +537,8 @@ class SubscriptionPlanScreen extends StatelessWidget {
     );
   }
 
-  Future<bool> _updatePlan(BuildContext context, String tier, String status) async {
+  Future<bool> _updatePlan(
+      BuildContext context, String tier, String status) async {
     final authProvider = context.read<AuthProvider>();
     try {
       await authProvider.updateSubscriptionPlan(tier: tier, status: status);
